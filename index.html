@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .tab-active {
@@ -176,24 +176,22 @@
         };
 
         // --- LÓGICA DE AUTENTICACIÓN ---
-        function gapiLoaded() { gapi.load('client', initializeGapiClient); }
-        window.gapiLoaded = gapiLoaded;
-
+        function gapiLoaded() {
+            gapi.load('client', initializeGapiClient);
+        }
+        
         async function initializeGapiClient() {
             const authError = document.getElementById('auth-error');
             const authorizeButton = document.getElementById('authorize-button');
 
             try {
-                // Paso 1: Comprobar si se ejecuta desde un servidor web
                 if (window.location.protocol === 'file:') {
-                    throw new Error("Esta aplicación debe ejecutarse desde un servidor web (usando una URL http:// o https://), no abriendo el archivo HTML directamente. El inicio de sesión no funcionará.");
+                    throw new Error("Esta aplicación debe ejecutarse desde un servidor web (http o https), no abriendo el archivo HTML directamente.");
                 }
                 document.getElementById('redirect-uri-helper').textContent = window.location.origin;
 
-                // Paso 2: Inicializar el cliente de la API de Google
                 await gapi.client.init({ discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'] });
 
-                // Paso 3: Inicializar el cliente de autenticación
                 tokenClient = google.accounts.oauth2.initTokenClient({
                     client_id: CLIENT_ID,
                     scope: SCOPES,
@@ -201,10 +199,9 @@
                 });
 
                 if (!tokenClient) {
-                    throw new Error("El cliente de autenticación de Google no se pudo inicializar. Revisa que el CLIENT_ID sea correcto.");
+                    throw new Error("El cliente de autenticación de Google no se pudo inicializar. Revisa que el CLIENT_ID sea correcto y que las APIs de Google se hayan cargado.");
                 }
-
-                // Paso 4: Asignar evento al botón y comprobar sesión existente
+                
                 authorizeButton.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
                 document.getElementById('logout-button').onclick = handleSignoutClick;
 
@@ -218,7 +215,6 @@
                 console.error("Error crítico durante la inicialización de Google API:", err);
                 authError.innerHTML = `<strong>Error de inicialización:</strong> ${err.message}`;
                 authError.classList.remove('hidden');
-                // Deshabilitar el botón si la inicialización falla
                 authorizeButton.disabled = true;
                 authorizeButton.textContent = 'Error de Configuración';
                 authorizeButton.classList.add('bg-red-400', 'cursor-not-allowed');
@@ -274,7 +270,7 @@
                 const historyValues = (historyResponse.result.values || []).reverse();
                 renderHistory(historyValues);
                 
-                resetSelection(); // Inicia el asistente
+                resetSelection();
                 showToast('Datos cargados.', 'success');
             } catch (err) {
                 console.error('Error al cargar los datos:', err);
@@ -403,7 +399,7 @@
                 await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: SPREADSHEET_ID, range: `${HISTORY_SHEET_NAME}!A:E`, valueInputOption: 'USER_ENTERED', insertDataOption: 'INSERT_ROWS', resource: { values: [historyRow] } });
                 
                 showToast('Stock actualizado.', 'success');
-                await loadSheetData(); // Esto recarga y resetea la vista
+                await loadSheetData();
             } catch (err) {
                 console.error('Error al actualizar:', err);
                 showToast('Error al guardar.', 'error');
@@ -447,7 +443,8 @@
             document.getElementById('final-product-view').addEventListener('click', (e) => {
                 const target = e.target.closest('button[data-id]');
                 if (!target) return;
-                const quantity = parseInt(target.closest('.flex-col.gap-2').querySelector('input, .w-20'), 10);
+                const quantityInput = target.closest('.flex.items-center.gap-2').querySelector('input');
+                const quantity = parseInt(quantityInput.value, 10);
                 if (isNaN(quantity) || quantity <= 0) { showToast('Cantidad no válida.', 'error'); return; }
                 updateStock(target.dataset.id, target.dataset.action, quantity);
             });
@@ -460,8 +457,12 @@
                 document.getElementById('view-historial').style.display = isInventarioTab ? 'none' : 'block';
             }));
         }
-        
-        attachEventListeners();
+
+        // Inicializar la carga de la API y los listeners de la UI
+        window.onload = () => {
+            gapiLoaded();
+            attachEventListeners();
+        };
     </script>
 </body>
 </html>
