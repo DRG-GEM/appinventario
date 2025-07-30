@@ -34,6 +34,11 @@
             <button id="authorize-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg transition-colors w-full">
                 Iniciar Sesión con Google
             </button>
+             <div class="mt-4 p-3 bg-yellow-100 border border-yellow-300 rounded-md text-sm text-yellow-800">
+                <p><strong>Paso de configuración:</strong></p>
+                <p>Asegúrate de añadir la siguiente URL en la sección "URIs de redireccionamiento autorizados" de tus credenciales en Google Cloud:</p>
+                <p id="redirect-uri-helper" class="font-mono bg-yellow-200 p-1 rounded mt-1 break-all"></p>
+             </div>
              <p id="auth-error" class="text-red-500 text-sm mt-4 hidden"></p>
         </div>
     </div>
@@ -143,6 +148,9 @@
         window.gapiLoaded = gapiLoaded; // Make it accessible from the script tag in head
 
         async function initializeGapiClient() {
+            // Muestra la URL de redireccionamiento necesaria para ayudar al usuario
+            document.getElementById('redirect-uri-helper').textContent = window.location.origin;
+
             await gapi.client.init({
                 discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
             });
@@ -158,6 +166,8 @@
         function handleAuthClick() {
             tokenClient.callback = async (resp) => {
                 if (resp.error !== undefined) {
+                    document.getElementById('auth-error').textContent = `Error: ${resp.error}. Asegúrate de que la URL en el cuadro amarillo está autorizada en Google Cloud.`;
+                    document.getElementById('auth-error').classList.remove('hidden');
                     throw (resp);
                 }
                 document.getElementById('login-overlay').classList.add('hidden');
