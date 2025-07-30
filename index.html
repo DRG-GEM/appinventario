@@ -73,8 +73,9 @@
 
         <!-- Contenido Principal -->
         <main id="main-content" class="disabled-ui">
-            <!-- El resto de la UI es igual -->
+            <!-- Vista de Inventario -->
             <div id="view-inventario">
+                <!-- 1. Selección de Categoría (Guardería/Colegio) -->
                 <div id="category-selection" class="text-center py-12 fade-in">
                     <h2 class="text-2xl font-semibold mb-6">Selecciona una sección</h2>
                     <div class="flex flex-col md:flex-row justify-center items-center gap-6">
@@ -88,29 +89,33 @@
                         </button>
                     </div>
                 </div>
-                <div id="product-view" class="hidden fade-in">
+
+                <!-- 2. Selección de Prenda (Camiseta, Pantalón, etc.) -->
+                <div id="garment-selection-view" class="hidden fade-in">
                     <div class="flex items-center mb-6">
-                        <button id="back-to-categories" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition-colors">&larr; Volver</button>
-                        <h2 id="product-view-title" class="text-2xl font-bold ml-4"></h2>
+                        <button id="back-to-categories" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition-colors">&larr; Volver a Secciones</button>
+                        <h2 id="garment-selection-title" class="text-2xl font-bold ml-4"></h2>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-white rounded-lg shadow-sm">
-                        <div>
-                            <label for="filter-manga" class="block text-sm font-medium text-gray-700">Manga</label>
-                            <select id="filter-manga" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"><option value="all">Todas</option><option value="Corta">Corta</option><option value="Larga">Larga</option></select>
-                        </div>
-                        <div>
-                            <label for="filter-talla" class="block text-sm font-medium text-gray-700">Talla</label>
-                            <select id="filter-talla" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"><option value="all">Todas</option></select>
-                        </div>
-                        <div>
-                            <label for="filter-centro" class="block text-sm font-medium text-gray-700">Centro</label>
-                            <select id="filter-centro" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"><option value="all">Todos</option><option value="VP">VP</option><option value="PII">PII</option></select>
-                        </div>
+                    <div id="garment-list" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <!-- Botones de prendas se insertarán aquí dinámicamente -->
                     </div>
-                    <div id="product-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
-                    <div id="loading-products" class="text-center py-10"><p class="text-gray-500">Cargando productos...</p></div>
                 </div>
+
+                <!-- 3. Vista de Tallas y Stock para una Prenda -->
+                <div id="product-sizes-view" class="hidden fade-in">
+                     <div class="flex items-center mb-6">
+                        <button id="back-to-garments" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition-colors">&larr; Volver a Prendas</button>
+                        <h2 id="product-sizes-title" class="text-2xl font-bold ml-4"></h2>
+                    </div>
+                    <div id="product-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Tarjetas de productos (por talla/centro) se insertarán aquí -->
+                    </div>
+                </div>
+
+                 <div id="loading-indicator" class="text-center py-10 hidden"><p class="text-gray-500">Cargando...</p></div>
             </div>
+
+            <!-- Vista de Historial (sin cambios) -->
             <div id="view-historial" class="hidden fade-in">
                 <h2 class="text-2xl font-bold mb-4">Historial de Movimientos</h2>
                 <div class="bg-white shadow-md rounded-lg overflow-x-auto">
@@ -140,17 +145,14 @@
         let tokenClient;
         let allProducts = [];
         let currentCategory = '';
+        let currentGarment = '';
 
         // --- LÓGICA DE AUTENTICACIÓN Y API DE GOOGLE ---
-        function gapiLoaded() {
-            gapi.load('client', initializeGapiClient);
-        }
-        window.gapiLoaded = gapiLoaded; // Make it accessible from the script tag in head
+        function gapiLoaded() { gapi.load('client', initializeGapiClient); }
+        window.gapiLoaded = gapiLoaded;
 
         async function initializeGapiClient() {
-            // Muestra la URL de redireccionamiento necesaria para ayudar al usuario
             document.getElementById('redirect-uri-helper').textContent = window.location.origin;
-
             await gapi.client.init({
                 discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
             });
@@ -175,7 +177,6 @@
                 document.getElementById('main-content').classList.remove('disabled-ui');
                 await loadSheetData();
             };
-
             if (gapi.client.getToken() === null) {
                 tokenClient.requestAccessToken({prompt: 'consent'});
             } else {
@@ -192,22 +193,21 @@
                 document.getElementById('logout-button').classList.add('hidden');
                 document.getElementById('main-content').classList.add('disabled-ui');
                 allProducts = [];
-                renderProducts();
-                renderHistory([]);
+                showView('category-selection');
             }
         }
 
         async function loadSheetData() {
             showToast('Cargando datos...');
+            document.getElementById('loading-indicator').classList.remove('hidden');
             try {
-                // Cargar Inventario
                 const inventoryResponse = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: SPREADSHEET_ID,
-                    range: `${INVENTORY_SHEET_NAME}!A2:G`, // Desde la fila 2 para saltar cabeceras
+                    range: `${INVENTORY_SHEET_NAME}!A2:G`,
                 });
                 const inventoryValues = inventoryResponse.result.values || [];
                 allProducts = inventoryValues.map((row, index) => ({
-                    rowNum: index + 2, // El número de fila real en la hoja
+                    rowNum: index + 2,
                     id: row[COLS.id],
                     categoria: row[COLS.categoria],
                     prenda: row[COLS.prenda],
@@ -216,63 +216,76 @@
                     centro: row[COLS.centro],
                     stock: parseInt(row[COLS.stock], 10) || 0,
                 }));
-                populateSizeFilter();
-                if (currentCategory) renderProducts();
 
-                // Cargar Historial
                 const historyResponse = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: SPREADSHEET_ID,
                     range: `${HISTORY_SHEET_NAME}!A2:E`,
                 });
-                 const historyValues = (historyResponse.result.values || []).reverse(); // Más recientes primero
+                const historyValues = (historyResponse.result.values || []).reverse();
                 renderHistory(historyValues);
                 showToast('Datos cargados con éxito.', 'success');
-
             } catch (err) {
                 console.error('Error al cargar los datos:', err);
                 showToast('Error al cargar los datos. Revisa la consola.', 'error');
+            } finally {
+                document.getElementById('loading-indicator').classList.add('hidden');
             }
         }
 
-        // --- LÓGICA DE LA APLICACIÓN ---
-        function showToast(message, type = 'success') {
-            const toast = document.getElementById('toast');
-            const toastMessage = document.getElementById('toast-message');
-            toastMessage.textContent = message;
-            toast.className = `fixed bottom-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg transition-opacity duration-300 ${type === 'error' ? 'bg-red-600' : 'bg-gray-900'}`;
-            toast.classList.remove('opacity-0');
-            setTimeout(() => toast.classList.add('opacity-0'), 3000);
+        // --- LÓGICA DE LA APLICACIÓN Y NAVEGACIÓN ---
+        function showView(viewId) {
+            ['category-selection', 'garment-selection-view', 'product-sizes-view'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            document.getElementById(viewId).classList.remove('hidden');
         }
 
-        function renderProducts() {
-            const list = document.getElementById('product-list');
-            const loading = document.getElementById('loading-products');
-            const filters = {
-                manga: document.getElementById('filter-manga').value,
-                talla: document.getElementById('filter-talla').value,
-                centro: document.getElementById('filter-centro').value,
-            };
+        function showGarmentSelection(category) {
+            currentCategory = category;
+            document.getElementById('garment-selection-title').textContent = `Prendas de ${category}`;
+            
+            const garments = [...new Set(allProducts
+                .filter(p => p.categoria === category)
+                .map(p => p.prenda)
+            )].sort();
 
-            const filtered = allProducts.filter(p => 
-                p.categoria === currentCategory &&
-                (filters.manga === 'all' || p.manga === filters.manga) &&
-                (filters.talla === 'all' || p.talla === filters.talla) &&
-                (filters.centro === 'all' || p.centro === filters.centro)
+            const garmentListContainer = document.getElementById('garment-list');
+            garmentListContainer.innerHTML = '';
+            if (garments.length === 0) {
+                garmentListContainer.innerHTML = `<p class="text-gray-500 col-span-full text-center">No hay prendas definidas para esta categoría.</p>`;
+            } else {
+                garments.forEach(garment => {
+                    const button = document.createElement('button');
+                    button.className = 'garment-btn bg-white hover:bg-gray-50 transition-colors shadow-sm rounded-lg p-4 text-center font-semibold';
+                    button.textContent = garment;
+                    button.dataset.garment = garment;
+                    garmentListContainer.appendChild(button);
+                });
+            }
+            showView('garment-selection-view');
+        }
+
+        function renderProductSizes() {
+            document.getElementById('product-sizes-title').textContent = `${currentGarment}`;
+            const productListContainer = document.getElementById('product-list');
+            productListContainer.innerHTML = '';
+
+            const filteredProducts = allProducts.filter(p => 
+                p.categoria === currentCategory && p.prenda === currentGarment
             );
 
-            loading.style.display = 'none';
-            list.innerHTML = '';
-            if (filtered.length === 0) {
-                list.innerHTML = `<p class="text-gray-500 col-span-full text-center">No se encontraron productos.</p>`;
+            if (filteredProducts.length === 0) {
+                productListContainer.innerHTML = `<p class="text-gray-500 col-span-full text-center">No se encontraron productos.</p>`;
                 return;
             }
-            filtered.forEach(p => {
+
+            filteredProducts.sort((a,b) => a.talla.localeCompare(b.talla, undefined, {numeric: true})).forEach(p => {
                 const stockColor = p.stock <= 10 ? 'text-red-600' : (p.stock <= 25 ? 'text-yellow-600' : 'text-green-600');
-                list.innerHTML += `
+                const card = `
                     <div class="bg-white rounded-lg shadow-md p-4 flex flex-col justify-between fade-in">
                         <div>
-                            <h3 class="font-bold text-lg">${p.prenda}</h3>
-                            <p class="text-sm text-gray-600">${p.manga}, Talla ${p.talla}, Centro ${p.centro}</p>
+                            <h3 class="font-bold text-lg">Talla ${p.talla}</h3>
+                            <p class="text-sm text-gray-600">Centro: ${p.centro} / Manga: ${p.manga}</p>
                             <p class="mt-2 font-bold text-xl ${stockColor}">${p.stock} <span class="text-sm font-normal text-gray-500">en stock</span></p>
                         </div>
                         <div class="mt-4 pt-4 border-t border-gray-200 flex items-center gap-2">
@@ -281,7 +294,9 @@
                             <button data-id="${p.id}" data-action="add" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-md transition-colors">+ Entrada</button>
                         </div>
                     </div>`;
+                productListContainer.innerHTML += card;
             });
+            showView('product-sizes-view');
         }
         
         function renderHistory(history) {
@@ -308,17 +323,11 @@
 
         async function updateStock(productId, action, quantity) {
             const product = allProducts.find(p => p.id === productId);
-            if (!product) {
-                showToast('Producto no encontrado.', 'error');
-                return;
-            }
+            if (!product) { showToast('Producto no encontrado.', 'error'); return; }
             
             let newStock = product.stock;
             if (action === 'sell') {
-                if (product.stock < quantity) {
-                    showToast('Stock insuficiente para la venta.', 'error');
-                    return;
-                }
+                if (product.stock < quantity) { showToast('Stock insuficiente para la venta.', 'error'); return; }
                 newStock -= quantity;
             } else {
                 newStock += quantity;
@@ -328,34 +337,20 @@
             document.getElementById('main-content').classList.add('disabled-ui');
 
             try {
-                // 1. Actualizar celda de stock
                 const stockCell = `${INVENTORY_SHEET_NAME}!G${product.rowNum}`;
                 await gapi.client.sheets.spreadsheets.values.update({
-                    spreadsheetId: SPREADSHEET_ID,
-                    range: stockCell,
-                    valueInputOption: 'USER_ENTERED',
-                    resource: { values: [[newStock]] }
+                    spreadsheetId: SPREADSHEET_ID, range: stockCell, valueInputOption: 'USER_ENTERED', resource: { values: [[newStock]] }
                 });
 
-                // 2. Añadir fila al historial
-                const productName = `${product.prenda} ${product.manga}, Talla ${product.talla}, Centro ${product.centro}`;
-                const historyRow = [
-                    new Date().toLocaleString('es-ES'),
-                    productName,
-                    action === 'sell' ? 'Venta' : 'Entrada',
-                    quantity,
-                    newStock
-                ];
+                const productName = `${product.prenda} Talla ${product.talla}, Centro ${product.centro}`;
+                const historyRow = [ new Date().toLocaleString('es-ES'), productName, action === 'sell' ? 'Venta' : 'Entrada', quantity, newStock ];
                 await gapi.client.sheets.spreadsheets.values.append({
-                    spreadsheetId: SPREADSHEET_ID,
-                    range: `${HISTORY_SHEET_NAME}!A:E`,
-                    valueInputOption: 'USER_ENTERED',
-                    insertDataOption: 'INSERT_ROWS',
-                    resource: { values: [historyRow] }
+                    spreadsheetId: SPREADSHEET_ID, range: `${HISTORY_SHEET_NAME}!A:E`, valueInputOption: 'USER_ENTERED', insertDataOption: 'INSERT_ROWS', resource: { values: [historyRow] }
                 });
 
                 showToast('Stock actualizado con éxito.', 'success');
-                await loadSheetData(); // Recargar todos los datos para reflejar cambios
+                await loadSheetData();
+                renderProductSizes(); // Re-render the current view with fresh data
 
             } catch (err) {
                 console.error('Error al actualizar la hoja:', err);
@@ -365,45 +360,49 @@
             }
         }
 
-        function populateSizeFilter() {
-            const sizeFilter = document.getElementById('filter-talla');
-            const sizes = [...new Set(allProducts.map(p => p.talla))].sort((a, b) => {
-                const order = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-                const aNum = parseInt(a), bNum = parseInt(b);
-                if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
-                return order.indexOf(a) - order.indexOf(b);
-            });
-            sizeFilter.innerHTML = '<option value="all">Todas</option>';
-            sizes.forEach(size => sizeFilter.innerHTML += `<option value="${size}">${size}</option>`);
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast'), toastMessage = document.getElementById('toast-message');
+            toastMessage.textContent = message;
+            toast.className = `fixed bottom-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg transition-opacity duration-300 ${type === 'error' ? 'bg-red-600' : 'bg-gray-900'}`;
+            toast.classList.remove('opacity-0');
+            setTimeout(() => toast.classList.add('opacity-0'), 3000);
         }
 
         // --- MANEJADORES DE EVENTOS ---
         function attachEventListeners() {
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', (e) => { /* ... */ }));
-            document.querySelectorAll('.category-btn').forEach(btn => btn.addEventListener('click', (e) => {
-                currentCategory = e.currentTarget.dataset.category;
-                document.getElementById('category-selection').classList.add('hidden');
-                document.getElementById('product-view').classList.remove('hidden');
-                document.getElementById('product-view-title').textContent = `Inventario de ${currentCategory}`;
-                renderProducts();
-            }));
-            document.getElementById('back-to-categories').addEventListener('click', () => {
-                document.getElementById('product-view').classList.add('hidden');
-                document.getElementById('category-selection').classList.remove('hidden');
-                currentCategory = '';
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => showGarmentSelection(e.currentTarget.dataset.category));
             });
-            document.getElementById('refresh-button').addEventListener('click', loadSheetData);
-            document.querySelectorAll('#filter-manga, #filter-talla, #filter-centro').forEach(sel => sel.addEventListener('change', renderProducts));
+
+            document.getElementById('garment-list').addEventListener('click', (e) => {
+                const target = e.target.closest('.garment-btn');
+                if (target) {
+                    currentGarment = target.dataset.garment;
+                    renderProductSizes();
+                }
+            });
+
+            document.getElementById('back-to-categories').addEventListener('click', () => showView('category-selection'));
+            document.getElementById('back-to-garments').addEventListener('click', () => showView('garment-selection-view'));
+            
+            document.getElementById('refresh-button').addEventListener('click', async () => {
+                await loadSheetData();
+                // Re-render the correct view after refresh
+                if (currentGarment) {
+                    renderProductSizes();
+                } else if (currentCategory) {
+                    showGarmentSelection(currentCategory);
+                }
+            });
+
             document.getElementById('product-list').addEventListener('click', (e) => {
                 const target = e.target.closest('button[data-id]');
                 if (!target) return;
                 const quantity = parseInt(target.parentElement.querySelector('input').value, 10);
-                if (isNaN(quantity) || quantity <= 0) {
-                    showToast('Introduce una cantidad válida.', 'error');
-                    return;
-                }
+                if (isNaN(quantity) || quantity <= 0) { showToast('Introduce una cantidad válida.', 'error'); return; }
                 updateStock(target.dataset.id, target.dataset.action, quantity);
             });
+
             document.querySelectorAll('[id^="tab-"]').forEach(tab => tab.addEventListener('click', (e) => {
                 document.querySelectorAll('[id^="tab-"]').forEach(t => t.classList.remove('tab-active'));
                 e.target.classList.add('tab-active');
