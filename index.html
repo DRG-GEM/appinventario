@@ -8,7 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://apis.google.com/js/api.js" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .tab-active {
@@ -180,31 +181,42 @@
             gapi.load('client', initializeGapiClient);
         }
         
-        async function initializeGapiClient() {
+        function gsiLoaded() {
             const authError = document.getElementById('auth-error');
             const authorizeButton = document.getElementById('authorize-button');
-
             try {
-                if (window.location.protocol === 'file:') {
-                    throw new Error("Esta aplicación debe ejecutarse desde un servidor web (http o https), no abriendo el archivo HTML directamente.");
+                if (!google || !google.accounts || !google.accounts.oauth2) {
+                    throw new Error("La librería de Google Identity Services (GSI) no se cargó correctamente.");
                 }
-                document.getElementById('redirect-uri-helper').textContent = window.location.origin;
-
-                await gapi.client.init({ discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'] });
-
                 tokenClient = google.accounts.oauth2.initTokenClient({
                     client_id: CLIENT_ID,
                     scope: SCOPES,
                     callback: handleAuthResponse
                 });
-
                 if (!tokenClient) {
-                    throw new Error("El cliente de autenticación de Google no se pudo inicializar. Revisa que el CLIENT_ID sea correcto y que las APIs de Google se hayan cargado.");
+                    throw new Error("El cliente de autenticación de Google (tokenClient) no se pudo inicializar. Revisa que el CLIENT_ID sea correcto.");
                 }
-                
                 authorizeButton.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
-                document.getElementById('logout-button').onclick = handleSignoutClick;
+            } catch (err) {
+                 console.error("Error crítico durante la inicialización de GSI:", err);
+                authError.innerHTML = `<strong>Error de inicialización GSI:</strong> ${err.message}`;
+                authError.classList.remove('hidden');
+                authorizeButton.disabled = true;
+                authorizeButton.textContent = 'Error de Configuración';
+                authorizeButton.classList.add('bg-red-400', 'cursor-not-allowed');
+            }
+        }
 
+        async function initializeGapiClient() {
+            try {
+                if (window.location.protocol === 'file:') {
+                    throw new Error("Esta aplicación debe ejecutarse desde un servidor web (http o https), no abriendo el archivo HTML directamente.");
+                }
+                document.getElementById('redirect-uri-helper').textContent = window.location.origin;
+                await gapi.client.init({ discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'] });
+                
+                document.getElementById('logout-button').onclick = handleSignoutClick;
+                
                 if (gapi.client.getToken() === null) {
                     document.getElementById('login-overlay').style.display = 'flex';
                 } else {
@@ -213,7 +225,9 @@
 
             } catch (err) {
                 console.error("Error crítico durante la inicialización de Google API:", err);
-                authError.innerHTML = `<strong>Error de inicialización:</strong> ${err.message}`;
+                const authError = document.getElementById('auth-error');
+                const authorizeButton = document.getElementById('authorize-button');
+                authError.innerHTML = `<strong>Error de inicialización API:</strong> ${err.message}`;
                 authError.classList.remove('hidden');
                 authorizeButton.disabled = true;
                 authorizeButton.textContent = 'Error de Configuración';
@@ -460,7 +474,24 @@
 
         // Inicializar la carga de la API y los listeners de la UI
         window.onload = () => {
-            gapiLoaded();
+            // Cargar ambas librerías de Google
+            gapiLoaded(); 
+            // La librería GSI se carga automáticamente y llama a su propio callback
+            // cuando está lista, pero no tenemos un callback explícito en el HTML.
+            // Para asegurar que `gsiLoaded` se llama, lo invocamos aquí.
+            // Esto es un workaround para la falta de un callback `onload` en el script GSI.
+            if (typeof google !== 'undefined') {
+                gsiLoaded();
+            } else {
+                // Reintentar después de un breve retraso si GSI no está listo
+                setTimeout(() => {
+                    if (typeof google !== 'undefined') {
+                        gsiLoaded();
+                    } else {
+                         console.error("La librería Google Identity Services (GSI) no se cargó a tiempo.");
+                    }
+                }, 500);
+            }
             attachEventListeners();
         };
     </script>
