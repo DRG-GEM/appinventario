@@ -23,14 +23,7 @@
         }
         .fade-in { animation: fadeIn 0.3s ease-out forwards; }
         .disabled-ui { pointer-events: none; opacity: 0.5; }
-        .step-button {
-            transition: all 0.2s ease-in-out;
-        }
-        .step-button.selected {
-            background-color: #3b82f6;
-            color: white;
-            font-weight: 600;
-        }
+        /* El estilo de los botones ahora se maneja con Tailwind directamente en el JS */
         .step-section[disabled] {
             opacity: 0.4;
             pointer-events: none;
@@ -99,28 +92,28 @@
                     <div id="selection-wizard" class="space-y-6">
                         <!-- Paso 1: Categoría -->
                         <div id="step-category" class="step-section">
-                            <h3 class="font-semibold mb-2 text-lg">1. Categoría</h3>
-                            <div id="options-category" class="flex flex-wrap gap-3"></div>
+                            <h3 class="font-semibold mb-2 text-lg">Categoría</h3>
+                            <div id="options-category" class="bg-gray-100 p-1 rounded-xl flex flex-wrap gap-1"></div>
                         </div>
                         <!-- Paso 2: Prenda -->
                         <div id="step-garment" class="step-section" disabled>
-                            <h3 class="font-semibold mb-2 text-lg">2. Prenda</h3>
-                            <div id="options-garment" class="flex flex-wrap gap-3"></div>
+                            <h3 class="font-semibold mb-2 text-lg">Prenda</h3>
+                            <div id="options-garment" class="bg-gray-100 p-1 rounded-xl flex flex-wrap gap-1"></div>
                         </div>
                         <!-- Paso 3: Manga -->
                         <div id="step-sleeve" class="step-section" disabled>
-                            <h3 class="font-semibold mb-2 text-lg">3. Manga</h3>
-                            <div id="options-sleeve" class="flex flex-wrap gap-3"></div>
+                            <h3 class="font-semibold mb-2 text-lg">Manga</h3>
+                            <div id="options-sleeve" class="bg-gray-100 p-1 rounded-xl flex flex-wrap gap-1"></div>
                         </div>
                         <!-- Paso 4: Talla -->
                         <div id="step-size" class="step-section" disabled>
-                            <h3 class="font-semibold mb-2 text-lg">4. Talla</h3>
-                            <div id="options-size" class="flex flex-wrap gap-3"></div>
+                            <h3 class="font-semibold mb-2 text-lg">Talla</h3>
+                            <div id="options-size" class="bg-gray-100 p-1 rounded-xl flex flex-wrap gap-1"></div>
                         </div>
                         <!-- Paso 5: Centro -->
                         <div id="step-center" class="step-section" disabled>
-                            <h3 class="font-semibold mb-2 text-lg">5. Centro</h3>
-                            <div id="options-center" class="flex flex-wrap gap-3"></div>
+                            <h3 class="font-semibold mb-2 text-lg">Centro</h3>
+                            <div id="options-center" class="bg-gray-100 p-1 rounded-xl flex flex-wrap gap-1"></div>
                         </div>
                     </div>
                     
@@ -185,7 +178,7 @@
             const authError = document.getElementById('auth-error');
             const authorizeButton = document.getElementById('authorize-button');
             try {
-                if (!google || !google.accounts || !google.accounts.oauth2) {
+                if (!window.google || !google.accounts || !google.accounts.oauth2) {
                     throw new Error("La librería de Google Identity Services (GSI) no se cargó correctamente.");
                 }
                 tokenClient = google.accounts.oauth2.initTokenClient({
@@ -208,6 +201,8 @@
         }
 
         async function initializeGapiClient() {
+            const authError = document.getElementById('auth-error');
+            const authorizeButton = document.getElementById('authorize-button');
             try {
                 if (window.location.protocol === 'file:') {
                     throw new Error("Esta aplicación debe ejecutarse desde un servidor web (http o https), no abriendo el archivo HTML directamente.");
@@ -225,8 +220,6 @@
 
             } catch (err) {
                 console.error("Error crítico durante la inicialización de Google API:", err);
-                const authError = document.getElementById('auth-error');
-                const authorizeButton = document.getElementById('authorize-button');
                 authError.innerHTML = `<strong>Error de inicialización API:</strong> ${err.message}`;
                 authError.classList.remove('hidden');
                 authorizeButton.disabled = true;
@@ -331,10 +324,14 @@
             options.forEach(option => {
                 const button = document.createElement('button');
                 button.textContent = option;
-                button.className = 'step-button bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 py-2 px-4 rounded-md';
+                
+                const baseClasses = 'flex-auto text-center py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200';
                 if (selection[stepName] === option) {
-                    button.classList.add('selected');
+                    button.className = `${baseClasses} bg-white text-blue-600 shadow`;
+                } else {
+                    button.className = `${baseClasses} bg-transparent text-gray-500 hover:text-blue-500`;
                 }
+
                 button.onclick = () => handleStepSelection(stepName, option);
                 container.appendChild(button);
             });
@@ -474,23 +471,12 @@
 
         // Inicializar la carga de la API y los listeners de la UI
         window.onload = () => {
-            // Cargar ambas librerías de Google
-            gapiLoaded(); 
-            // La librería GSI se carga automáticamente y llama a su propio callback
-            // cuando está lista, pero no tenemos un callback explícito en el HTML.
-            // Para asegurar que `gsiLoaded` se llama, lo invocamos aquí.
-            // Esto es un workaround para la falta de un callback `onload` en el script GSI.
+            gapiLoaded();
             if (typeof google !== 'undefined') {
                 gsiLoaded();
             } else {
-                // Reintentar después de un breve retraso si GSI no está listo
-                setTimeout(() => {
-                    if (typeof google !== 'undefined') {
-                        gsiLoaded();
-                    } else {
-                         console.error("La librería Google Identity Services (GSI) no se cargó a tiempo.");
-                    }
-                }, 500);
+                const gsiScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+                gsiScript.onload = gsiLoaded;
             }
             attachEventListeners();
         };
