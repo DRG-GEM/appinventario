@@ -180,21 +180,32 @@
         window.gapiLoaded = gapiLoaded;
 
         async function initializeGapiClient() {
+            const authError = document.getElementById('auth-error');
+            const authorizeButton = document.getElementById('authorize-button');
+
             try {
+                // Paso 1: Comprobar si se ejecuta desde un servidor web
+                if (window.location.protocol === 'file:') {
+                    throw new Error("Esta aplicación debe ejecutarse desde un servidor web (usando una URL http:// o https://), no abriendo el archivo HTML directamente. El inicio de sesión no funcionará.");
+                }
                 document.getElementById('redirect-uri-helper').textContent = window.location.origin;
+
+                // Paso 2: Inicializar el cliente de la API de Google
                 await gapi.client.init({ discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'] });
-                
-                tokenClient = google.accounts.oauth2.initTokenClient({ 
-                    client_id: CLIENT_ID, 
-                    scope: SCOPES, 
-                    callback: handleAuthResponse 
+
+                // Paso 3: Inicializar el cliente de autenticación
+                tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: CLIENT_ID,
+                    scope: SCOPES,
+                    callback: handleAuthResponse
                 });
 
                 if (!tokenClient) {
-                    throw new Error("El cliente de autenticación de Google no se pudo inicializar. Revisa la configuración de CLIENT_ID.");
+                    throw new Error("El cliente de autenticación de Google no se pudo inicializar. Revisa que el CLIENT_ID sea correcto.");
                 }
 
-                document.getElementById('authorize-button').onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
+                // Paso 4: Asignar evento al botón y comprobar sesión existente
+                authorizeButton.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
                 document.getElementById('logout-button').onclick = handleSignoutClick;
 
                 if (gapi.client.getToken() === null) {
@@ -205,9 +216,12 @@
 
             } catch (err) {
                 console.error("Error crítico durante la inicialización de Google API:", err);
-                const authError = document.getElementById('auth-error');
-                authError.innerHTML = `<strong>Error de inicialización:</strong> ${err.message}. <br>El inicio de sesión no funcionará. Revisa la consola del navegador (F12) para más detalles.`;
+                authError.innerHTML = `<strong>Error de inicialización:</strong> ${err.message}`;
                 authError.classList.remove('hidden');
+                // Deshabilitar el botón si la inicialización falla
+                authorizeButton.disabled = true;
+                authorizeButton.textContent = 'Error de Configuración';
+                authorizeButton.classList.add('bg-red-400', 'cursor-not-allowed');
             }
         }
 
@@ -433,7 +447,7 @@
             document.getElementById('final-product-view').addEventListener('click', (e) => {
                 const target = e.target.closest('button[data-id]');
                 if (!target) return;
-                const quantity = parseInt(target.closest('div').querySelector('input').value, 10);
+                const quantity = parseInt(target.closest('.flex-col.gap-2').querySelector('input, .w-20'), 10);
                 if (isNaN(quantity) || quantity <= 0) { showToast('Cantidad no válida.', 'error'); return; }
                 updateStock(target.dataset.id, target.dataset.action, quantity);
             });
