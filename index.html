@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Inventario de Uniformes (Google Sheets)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://apis.google.com/js/api.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tab-active {
+            border-bottom-color: #3b82f6;
+            color: #3b82f6;
+            font-weight: 600;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        .disabled-ui { pointer-events: none; opacity: 0.5; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4">
+            <h2 class="text-2xl font-bold mb-4">Acceso Requerido</h2>
+            <p class="mb-6 text-gray-600">Para gestionar el inventario, necesitas autorizar la aplicación para que acceda a tus Hojas de Cálculo de Google.</p>
+            <button id="authorize-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg transition-colors w-full">
+                Iniciar Sesión con Google
+            </button>
+             <p id="auth-error" class="text-red-500 text-sm mt-4 hidden"></p>
+        </div>
+    </div>
+
+    <div id="app-container" class="max-w-7xl mx-auto p-4 md:p-6 lg:p-8">
+        <header class="mb-6 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Gestor de Inventario</h1>
+                <p class="text-gray-600 mt-1">Conectado a Google Sheets.</p>
+            </div>
+            <div>
+                <button id="logout-button" class="hidden bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                    Cerrar Sesión
+                </button>
+            </div>
+        </header>
+
+        <!-- Pestañas y botón de refrescar -->
+        <div class="flex justify-between items-center border-b border-gray-200 mb-6">
+            <nav class="flex space-x-4" aria-label="Tabs">
+                <button id="tab-inventario" class="px-3 py-2 font-medium text-sm rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 tab-active">
+                    Inventario
+                </button>
+                <button id="tab-historial" class="px-3 py-2 font-medium text-sm rounded-t-lg border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                    Historial
+                </button>
+            </nav>
+            <button id="refresh-button" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition-colors">
+                Refrescar Datos
+            </button>
+        </div>
+
+        <!-- Contenido Principal -->
+        <main id="main-content" class="disabled-ui">
+            <!-- El resto de la UI es igual -->
+            <div id="view-inventario">
+                <div id="category-selection" class="text-center py-12 fade-in">
+                    <h2 class="text-2xl font-semibold mb-6">Selecciona una sección</h2>
+                    <div class="flex flex-col md:flex-row justify-center items-center gap-6">
+                        <button data-category="Guardería" class="category-btn bg-white hover:bg-blue-50 transition-all duration-300 shadow-md rounded-lg p-8 w-full md:w-64 text-center">
+                            <span class="text-5xl mb-4 block">🧸</span>
+                            <span class="text-xl font-bold text-blue-600">Guardería</span>
+                        </button>
+                        <button data-category="Colegio" class="category-btn bg-white hover:bg-green-50 transition-all duration-300 shadow-md rounded-lg p-8 w-full md:w-64 text-center">
+                             <span class="text-5xl mb-4 block">📚</span>
+                            <span class="text-xl font-bold text-green-600">Resto del Centro</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="product-view" class="hidden fade-in">
+                    <div class="flex items-center mb-6">
+                        <button id="back-to-categories" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition-colors">&larr; Volver</button>
+                        <h2 id="product-view-title" class="text-2xl font-bold ml-4"></h2>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-white rounded-lg shadow-sm">
+                        <div>
+                            <label for="filter-manga" class="block text-sm font-medium text-gray-700">Manga</label>
+                            <select id="filter-manga" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"><option value="all">Todas</option><option value="Corta">Corta</option><option value="Larga">Larga</option></select>
+                        </div>
+                        <div>
+                            <label for="filter-talla" class="block text-sm font-medium text-gray-700">Talla</label>
+                            <select id="filter-talla" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"><option value="all">Todas</option></select>
+                        </div>
+                        <div>
+                            <label for="filter-centro" class="block text-sm font-medium text-gray-700">Centro</label>
+                            <select id="filter-centro" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"><option value="all">Todos</option><option value="VP">VP</option><option value="PII">PII</option></select>
+                        </div>
+                    </div>
+                    <div id="product-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+                    <div id="loading-products" class="text-center py-10"><p class="text-gray-500">Cargando productos...</p></div>
+                </div>
+            </div>
+            <div id="view-historial" class="hidden fade-in">
+                <h2 class="text-2xl font-bold mb-4">Historial de Movimientos</h2>
+                <div class="bg-white shadow-md rounded-lg overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50"><tr><th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th><th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th><th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th><th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad</th><th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Final</th></tr></thead>
+                        <tbody id="history-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                    <div id="loading-history" class="text-center py-10"><p class="text-gray-500">Cargando historial...</p></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="toast" class="fixed bottom-5 right-5 bg-gray-900 text-white py-2 px-4 rounded-lg shadow-lg transition-opacity duration-300 opacity-0"><p id="toast-message"></p></div>
+
+    <script type="text/javascript">
+        // --- CONFIGURACIÓN DE GOOGLE SHEETS (MODIFICAR ESTOS VALORES) ---
+        const CLIENT_ID = '1084678415319-sabnfksn40aqvi85g34iapdoss71to1s.apps.googleusercontent.com';
+        const SPREADSHEET_ID = '1E-ouvUbArRjG9Wa5ghAy3uzo1sT5bXqjHZvPt4MP_nA';
+        const INVENTORY_SHEET_NAME = 'Inventario';
+        const HISTORY_SHEET_NAME = 'Historial';
+        const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+
+        // Mapeo de columnas (A=0, B=1, etc.)
+        const COLS = { id: 0, categoria: 1, prenda: 2, manga: 3, talla: 4, centro: 5, stock: 6 };
+
+        let tokenClient;
+        let allProducts = [];
+        let currentCategory = '';
+
+        // --- LÓGICA DE AUTENTICACIÓN Y API DE GOOGLE ---
+        function gapiLoaded() {
+            gapi.load('client', initializeGapiClient);
+        }
+        window.gapiLoaded = gapiLoaded; // Make it accessible from the script tag in head
+
+        async function initializeGapiClient() {
+            await gapi.client.init({
+                discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+            });
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: '', // Se define dinámicamente
+            });
+            document.getElementById('authorize-button').onclick = handleAuthClick;
+            document.getElementById('logout-button').onclick = handleSignoutClick;
+        }
+
+        function handleAuthClick() {
+            tokenClient.callback = async (resp) => {
+                if (resp.error !== undefined) {
+                    throw (resp);
+                }
+                document.getElementById('login-overlay').classList.add('hidden');
+                document.getElementById('logout-button').classList.remove('hidden');
+                document.getElementById('main-content').classList.remove('disabled-ui');
+                await loadSheetData();
+            };
+
+            if (gapi.client.getToken() === null) {
+                tokenClient.requestAccessToken({prompt: 'consent'});
+            } else {
+                tokenClient.requestAccessToken({prompt: ''});
+            }
+        }
+
+        function handleSignoutClick() {
+            const token = gapi.client.getToken();
+            if (token !== null) {
+                google.accounts.oauth2.revoke(token.access_token);
+                gapi.client.setToken('');
+                document.getElementById('login-overlay').classList.remove('hidden');
+                document.getElementById('logout-button').classList.add('hidden');
+                document.getElementById('main-content').classList.add('disabled-ui');
+                allProducts = [];
+                renderProducts();
+                renderHistory([]);
+            }
+        }
+
+        async function loadSheetData() {
+            showToast('Cargando datos...');
+            try {
+                // Cargar Inventario
+                const inventoryResponse = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: SPREADSHEET_ID,
+                    range: `${INVENTORY_SHEET_NAME}!A2:G`, // Desde la fila 2 para saltar cabeceras
+                });
+                const inventoryValues = inventoryResponse.result.values || [];
+                allProducts = inventoryValues.map((row, index) => ({
+                    rowNum: index + 2, // El número de fila real en la hoja
+                    id: row[COLS.id],
+                    categoria: row[COLS.categoria],
+                    prenda: row[COLS.prenda],
+                    manga: row[COLS.manga],
+                    talla: row[COLS.talla],
+                    centro: row[COLS.centro],
+                    stock: parseInt(row[COLS.stock], 10) || 0,
+                }));
+                populateSizeFilter();
+                if (currentCategory) renderProducts();
+
+                // Cargar Historial
+                const historyResponse = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: SPREADSHEET_ID,
+                    range: `${HISTORY_SHEET_NAME}!A2:E`,
+                });
+                 const historyValues = (historyResponse.result.values || []).reverse(); // Más recientes primero
+                renderHistory(historyValues);
+                showToast('Datos cargados con éxito.', 'success');
+
+            } catch (err) {
+                console.error('Error al cargar los datos:', err);
+                showToast('Error al cargar los datos. Revisa la consola.', 'error');
+            }
+        }
+
+        // --- LÓGICA DE LA APLICACIÓN ---
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            toastMessage.textContent = message;
+            toast.className = `fixed bottom-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg transition-opacity duration-300 ${type === 'error' ? 'bg-red-600' : 'bg-gray-900'}`;
+            toast.classList.remove('opacity-0');
+            setTimeout(() => toast.classList.add('opacity-0'), 3000);
+        }
+
+        function renderProducts() {
+            const list = document.getElementById('product-list');
+            const loading = document.getElementById('loading-products');
+            const filters = {
+                manga: document.getElementById('filter-manga').value,
+                talla: document.getElementById('filter-talla').value,
+                centro: document.getElementById('filter-centro').value,
+            };
+
+            const filtered = allProducts.filter(p => 
+                p.categoria === currentCategory &&
+                (filters.manga === 'all' || p.manga === filters.manga) &&
+                (filters.talla === 'all' || p.talla === filters.talla) &&
+                (filters.centro === 'all' || p.centro === filters.centro)
+            );
+
+            loading.style.display = 'none';
+            list.innerHTML = '';
+            if (filtered.length === 0) {
+                list.innerHTML = `<p class="text-gray-500 col-span-full text-center">No se encontraron productos.</p>`;
+                return;
+            }
+            filtered.forEach(p => {
+                const stockColor = p.stock <= 10 ? 'text-red-600' : (p.stock <= 25 ? 'text-yellow-600' : 'text-green-600');
+                list.innerHTML += `
+                    <div class="bg-white rounded-lg shadow-md p-4 flex flex-col justify-between fade-in">
+                        <div>
+                            <h3 class="font-bold text-lg">${p.prenda}</h3>
+                            <p class="text-sm text-gray-600">${p.manga}, Talla ${p.talla}, Centro ${p.centro}</p>
+                            <p class="mt-2 font-bold text-xl ${stockColor}">${p.stock} <span class="text-sm font-normal text-gray-500">en stock</span></p>
+                        </div>
+                        <div class="mt-4 pt-4 border-t border-gray-200 flex items-center gap-2">
+                            <input type="number" value="1" min="1" class="w-16 text-center border-gray-300 rounded-md shadow-sm">
+                            <button data-id="${p.id}" data-action="sell" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-3 rounded-md transition-colors">- Venta</button>
+                            <button data-id="${p.id}" data-action="add" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-md transition-colors">+ Entrada</button>
+                        </div>
+                    </div>`;
+            });
+        }
+        
+        function renderHistory(history) {
+            const tbody = document.getElementById('history-table-body');
+            const loading = document.getElementById('loading-history');
+            loading.style.display = 'none';
+            tbody.innerHTML = '';
+            if (history.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-500">No hay movimientos.</td></tr>`;
+                return;
+            }
+            history.forEach(row => {
+                const typeClass = row[2] === 'Venta' ? 'text-red-500' : 'text-blue-500';
+                tbody.innerHTML += `
+                    <tr class="fade-in">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${row[0]}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${row[1]}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold ${typeClass}">${row[2]}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${row[3]}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">${row[4]}</td>
+                    </tr>`;
+            });
+        }
+
+        async function updateStock(productId, action, quantity) {
+            const product = allProducts.find(p => p.id === productId);
+            if (!product) {
+                showToast('Producto no encontrado.', 'error');
+                return;
+            }
+            
+            let newStock = product.stock;
+            if (action === 'sell') {
+                if (product.stock < quantity) {
+                    showToast('Stock insuficiente para la venta.', 'error');
+                    return;
+                }
+                newStock -= quantity;
+            } else {
+                newStock += quantity;
+            }
+
+            showToast('Actualizando stock...');
+            document.getElementById('main-content').classList.add('disabled-ui');
+
+            try {
+                // 1. Actualizar celda de stock
+                const stockCell = `${INVENTORY_SHEET_NAME}!G${product.rowNum}`;
+                await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: SPREADSHEET_ID,
+                    range: stockCell,
+                    valueInputOption: 'USER_ENTERED',
+                    resource: { values: [[newStock]] }
+                });
+
+                // 2. Añadir fila al historial
+                const productName = `${product.prenda} ${product.manga}, Talla ${product.talla}, Centro ${product.centro}`;
+                const historyRow = [
+                    new Date().toLocaleString('es-ES'),
+                    productName,
+                    action === 'sell' ? 'Venta' : 'Entrada',
+                    quantity,
+                    newStock
+                ];
+                await gapi.client.sheets.spreadsheets.values.append({
+                    spreadsheetId: SPREADSHEET_ID,
+                    range: `${HISTORY_SHEET_NAME}!A:E`,
+                    valueInputOption: 'USER_ENTERED',
+                    insertDataOption: 'INSERT_ROWS',
+                    resource: { values: [historyRow] }
+                });
+
+                showToast('Stock actualizado con éxito.', 'success');
+                await loadSheetData(); // Recargar todos los datos para reflejar cambios
+
+            } catch (err) {
+                console.error('Error al actualizar la hoja:', err);
+                showToast('Error al guardar los cambios.', 'error');
+            } finally {
+                document.getElementById('main-content').classList.remove('disabled-ui');
+            }
+        }
+
+        function populateSizeFilter() {
+            const sizeFilter = document.getElementById('filter-talla');
+            const sizes = [...new Set(allProducts.map(p => p.talla))].sort((a, b) => {
+                const order = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+                const aNum = parseInt(a), bNum = parseInt(b);
+                if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+                return order.indexOf(a) - order.indexOf(b);
+            });
+            sizeFilter.innerHTML = '<option value="all">Todas</option>';
+            sizes.forEach(size => sizeFilter.innerHTML += `<option value="${size}">${size}</option>`);
+        }
+
+        // --- MANEJADORES DE EVENTOS ---
+        function attachEventListeners() {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', (e) => { /* ... */ }));
+            document.querySelectorAll('.category-btn').forEach(btn => btn.addEventListener('click', (e) => {
+                currentCategory = e.currentTarget.dataset.category;
+                document.getElementById('category-selection').classList.add('hidden');
+                document.getElementById('product-view').classList.remove('hidden');
+                document.getElementById('product-view-title').textContent = `Inventario de ${currentCategory}`;
+                renderProducts();
+            }));
+            document.getElementById('back-to-categories').addEventListener('click', () => {
+                document.getElementById('product-view').classList.add('hidden');
+                document.getElementById('category-selection').classList.remove('hidden');
+                currentCategory = '';
+            });
+            document.getElementById('refresh-button').addEventListener('click', loadSheetData);
+            document.querySelectorAll('#filter-manga, #filter-talla, #filter-centro').forEach(sel => sel.addEventListener('change', renderProducts));
+            document.getElementById('product-list').addEventListener('click', (e) => {
+                const target = e.target.closest('button[data-id]');
+                if (!target) return;
+                const quantity = parseInt(target.parentElement.querySelector('input').value, 10);
+                if (isNaN(quantity) || quantity <= 0) {
+                    showToast('Introduce una cantidad válida.', 'error');
+                    return;
+                }
+                updateStock(target.dataset.id, target.dataset.action, quantity);
+            });
+            document.querySelectorAll('[id^="tab-"]').forEach(tab => tab.addEventListener('click', (e) => {
+                document.querySelectorAll('[id^="tab-"]').forEach(t => t.classList.remove('tab-active'));
+                e.target.classList.add('tab-active');
+                document.querySelectorAll('[id^="view-"]').forEach(v => v.classList.add('hidden'));
+                document.getElementById(`view-${e.target.id.split('-')[1]}`).classList.remove('hidden');
+            }));
+        }
+        
+        attachEventListeners();
+    </script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gapiLoaded()"></script>
+</body>
+</html>
