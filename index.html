@@ -23,7 +23,6 @@
         }
         .fade-in { animation: fadeIn 0.3s ease-out forwards; }
         .disabled-ui { pointer-events: none; opacity: 0.5; }
-        /* El estilo de los botones ahora se maneja con Tailwind directamente en el JS */
         .step-section[disabled] {
             opacity: 0.4;
             pointer-events: none;
@@ -81,36 +80,50 @@
         <main id="main-content" class="disabled-ui">
             <!-- Vista de Inventario -->
             <div id="view-inventario">
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                    <!-- Indicador de Progreso / Breadcrumbs -->
+                 <!-- 1. Selección de Categoría (Guardería/Colegio) -->
+                <div id="category-selection" class="text-center py-12 fade-in">
+                    <h2 class="text-2xl font-semibold mb-6">Selecciona una sección</h2>
+                    <div class="flex flex-col md:flex-row justify-center items-center gap-6">
+                        <button data-category="Guardería" class="category-btn bg-white hover:bg-blue-50 transition-all duration-300 shadow-md rounded-lg p-8 w-full md:w-64 text-center">
+                            <span class="text-5xl mb-4 block">🧸</span>
+                            <span class="text-xl font-bold text-blue-600">Guardería</span>
+                        </button>
+                        <button data-category="Resto del centro" class="category-btn bg-white hover:bg-green-50 transition-all duration-300 shadow-md rounded-lg p-8 w-full md:w-64 text-center">
+                             <span class="text-5xl mb-4 block">📚</span>
+                            <span class="text-xl font-bold text-green-600">Resto del Centro</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. Selección de Prenda (pantalón, falda, etc.) -->
+                <div id="garment-selection-view" class="hidden fade-in">
+                     <div class="flex items-center mb-6">
+                        <button id="back-to-categories" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition-colors">&larr; Volver a Secciones</button>
+                        <h2 id="garment-selection-title" class="text-2xl font-bold ml-4"></h2>
+                    </div>
+                    <div id="garment-list" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <!-- Botones de prendas se insertarán aquí dinámicamente -->
+                    </div>
+                </div>
+
+                <!-- 3. Asistente de Selección de Detalles -->
+                <div id="wizard-view" class="hidden fade-in bg-white p-6 rounded-lg shadow-md">
+                     <!-- Indicador de Progreso / Breadcrumbs -->
                     <div id="breadcrumbs" class="mb-6 p-3 bg-gray-50 rounded-md text-gray-700 flex items-center justify-between">
-                        <span id="breadcrumbs-text" class="text-sm md:text-base">Selecciona una categoría para empezar...</span>
-                        <button id="reset-selection" class="hidden bg-gray-200 hover:bg-gray-300 text-xs font-bold py-1 px-3 rounded-full">Empezar de nuevo</button>
+                        <span id="breadcrumbs-text" class="text-sm md:text-base"></span>
+                        <button id="reset-selection" class="bg-gray-200 hover:bg-gray-300 text-xs font-bold py-1 px-3 rounded-full">Empezar de nuevo</button>
                     </div>
 
                     <!-- Asistente de Selección -->
                     <div id="selection-wizard" class="space-y-6">
-                        <!-- Paso 1: Categoría -->
-                        <div id="step-category" class="step-section">
-                            <h3 class="font-semibold mb-2 text-lg">Categoría</h3>
-                            <div id="options-category" class="bg-gray-100 p-1 rounded-xl flex flex-wrap gap-1"></div>
-                        </div>
-                        <!-- Paso 2: Prenda -->
-                        <div id="step-garment" class="step-section" disabled>
-                            <h3 class="font-semibold mb-2 text-lg">Prenda</h3>
-                            <div id="options-garment" class="bg-gray-100 p-1 rounded-xl flex flex-wrap gap-1"></div>
-                        </div>
-                        <!-- Paso 3: Manga -->
                         <div id="step-sleeve" class="step-section" disabled>
                             <h3 class="font-semibold mb-2 text-lg">Manga</h3>
                             <div id="options-sleeve" class="bg-gray-100 p-1 rounded-xl flex flex-wrap gap-1"></div>
                         </div>
-                        <!-- Paso 4: Talla -->
                         <div id="step-size" class="step-section" disabled>
                             <h3 class="font-semibold mb-2 text-lg">Talla</h3>
                             <div id="options-size" class="bg-gray-100 p-1 rounded-xl flex flex-wrap gap-1"></div>
                         </div>
-                        <!-- Paso 5: Centro -->
                         <div id="step-center" class="step-section" disabled>
                             <h3 class="font-semibold mb-2 text-lg">Centro</h3>
                             <div id="options-center" class="bg-gray-100 p-1 rounded-xl flex flex-wrap gap-1"></div>
@@ -127,7 +140,7 @@
 
             <!-- Vista de Historial -->
             <div id="view-historial" class="hidden fade-in">
-                <h2 class="text-2xl font-bold mb-4">Historial de Movimientos</h2>
+                 <h2 class="text-2xl font-bold mb-4">Historial de Movimientos</h2>
                 <div class="bg-white shadow-md rounded-lg overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
@@ -139,9 +152,7 @@
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Final</th>
                             </tr>
                         </thead>
-                        <tbody id="history-table-body" class="bg-white divide-y divide-gray-200">
-                            <!-- Las filas del historial se insertarán aquí -->
-                        </tbody>
+                        <tbody id="history-table-body" class="bg-white divide-y divide-gray-200"></tbody>
                     </table>
                 </div>
             </div>
@@ -159,6 +170,11 @@
         const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
         const COLS = { id: 0, categoria: 1, prenda: 2, manga: 3, talla: 4, centro: 5, stock: 6, imagen_url: 7 };
 
+        const STATIC_GARMENTS = {
+            "Guardería": ["Camiseta m/c", "Camiseta m/l", "Pantalón corto", "Pantalón largo", "Malla", "Chaqueta", "Chandal Guard.", "Babi Guarderia"],
+            "Resto del centro": ["pantalón mostaza", "falda", "polo", "sueter", "babi infantil", "chándal", "sport", "malla", "camiseta", "sudadera", "leotardos", "calcetines", "calcetas"]
+        };
+
         let tokenClient;
         let allProducts = [];
         let selection = {
@@ -170,9 +186,7 @@
         };
 
         // --- LÓGICA DE AUTENTICACIÓN ---
-        function gapiLoaded() {
-            gapi.load('client', initializeGapiClient);
-        }
+        function gapiLoaded() { gapi.load('client', initializeGapiClient); }
         
         function gsiLoaded() {
             const authError = document.getElementById('auth-error');
@@ -182,12 +196,10 @@
                     throw new Error("La librería de Google Identity Services (GSI) no se cargó correctamente.");
                 }
                 tokenClient = google.accounts.oauth2.initTokenClient({
-                    client_id: CLIENT_ID,
-                    scope: SCOPES,
-                    callback: handleAuthResponse
+                    client_id: CLIENT_ID, scope: SCOPES, callback: handleAuthResponse
                 });
                 if (!tokenClient) {
-                    throw new Error("El cliente de autenticación de Google (tokenClient) no se pudo inicializar. Revisa que el CLIENT_ID sea correcto.");
+                    throw new Error("El cliente de autenticación de Google no se pudo inicializar. Revisa que el CLIENT_ID sea correcto.");
                 }
                 authorizeButton.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
             } catch (err) {
@@ -287,11 +299,41 @@
             }
         }
 
-        // --- LÓGICA DEL ASISTENTE DE SELECCIÓN ---
+        // --- LÓGICA DE NAVEGACIÓN Y VISTAS ---
+        function showView(viewId) {
+            ['category-selection', 'garment-selection-view', 'wizard-view'].forEach(id => {
+                document.getElementById(id).style.display = 'none';
+            });
+            document.getElementById(viewId).style.display = 'block';
+        }
+
+        function showGarmentSelection(category) {
+            selection.category = category;
+            document.getElementById('garment-selection-title').textContent = `Prendas de ${category}`;
+            
+            const garmentListContainer = document.getElementById('garment-list');
+            garmentListContainer.innerHTML = '';
+            const garmentsForCategory = STATIC_GARMENTS[category] || [];
+
+            garmentsForCategory.forEach(garment => {
+                const button = document.createElement('button');
+                button.className = 'garment-btn bg-white hover:bg-gray-50 transition-colors shadow-sm rounded-lg p-4 text-center font-semibold flex flex-col items-center justify-center gap-2 h-32';
+                button.dataset.garment = garment;
+                button.innerHTML = `<span>${garment}</span>`;
+                garmentListContainer.appendChild(button);
+            });
+            showView('garment-selection-view');
+        }
+
+        function startWizard(garment) {
+            selection.garment = garment;
+            showView('wizard-view');
+            renderWizard();
+        }
+
         function resetSelection() {
             selection = { category: null, garment: null, sleeve: null, size: null, center: null };
-            renderWizard();
-            document.getElementById('reset-selection').classList.add('hidden');
+            showView('category-selection');
         }
 
         function renderWizard() {
@@ -300,13 +342,11 @@
 
             let filtered = allProducts;
             if (selection.category) filtered = filtered.filter(p => p.categoria === selection.category);
-            if (selection.garment) filtered = filtered.filter(p => p.prenda === selection.garment);
+            if (selection.garment) filtered = filtered.filter(p => p.prenda.toLowerCase() === selection.garment.toLowerCase());
             if (selection.sleeve) filtered = filtered.filter(p => p.manga === selection.sleeve);
             if (selection.size) filtered = filtered.filter(p => p.talla === selection.size);
             if (selection.center) filtered = filtered.filter(p => p.centro === selection.center);
 
-            populateStep('category', [...new Set(allProducts.map(p => p.categoria))]);
-            populateStep('garment', [...new Set(filtered.map(p => p.prenda))], !selection.category);
             populateStep('sleeve', [...new Set(filtered.map(p => p.manga))], !selection.garment);
             populateStep('size', [...new Set(filtered.map(p => p.talla))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })) , !selection.sleeve);
             populateStep('center', [...new Set(filtered.map(p => p.centro))], !selection.size);
@@ -336,6 +376,7 @@
                 container.appendChild(button);
             });
             
+            stepSection.style.display = options.length > 0 ? 'block' : 'none';
             disabled ? stepSection.setAttribute('disabled', '') : stepSection.removeAttribute('disabled');
         }
 
@@ -345,18 +386,16 @@
             }
             selection[stepName] = value;
             
-            const steps = ['category', 'garment', 'sleeve', 'size', 'center'];
+            const steps = ['sleeve', 'size', 'center'];
             const currentStepIndex = steps.indexOf(stepName);
             for (let i = currentStepIndex + 1; i < steps.length; i++) {
                 selection[steps[i]] = null;
             }
-            
-            document.getElementById('reset-selection').classList.remove('hidden');
             renderWizard();
         }
 
         function updateBreadcrumbs() {
-            const text = Object.values(selection).filter(Boolean).join(' > ') || 'Selecciona una categoría para empezar...';
+            const text = Object.values(selection).filter(Boolean).join(' > ');
             document.getElementById('breadcrumbs-text').textContent = text;
         }
 
@@ -451,6 +490,20 @@
         function attachEventListeners() {
             document.getElementById('reset-selection').addEventListener('click', resetSelection);
             document.getElementById('refresh-button').addEventListener('click', loadSheetData);
+            
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => showGarmentSelection(e.currentTarget.dataset.category));
+            });
+            
+            document.getElementById('back-to-categories').addEventListener('click', () => showView('category-selection'));
+
+            document.getElementById('garment-list').addEventListener('click', (e) => {
+                const target = e.target.closest('.garment-btn');
+                if (target) {
+                    startWizard(target.dataset.garment);
+                }
+            });
+
             document.getElementById('final-product-view').addEventListener('click', (e) => {
                 const target = e.target.closest('button[data-id]');
                 if (!target) return;
