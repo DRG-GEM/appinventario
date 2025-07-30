@@ -159,37 +159,45 @@
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,
-                callback: '', // Se define dinámicamente
+                callback: handleAuthResponse, // Callback unificado
             });
-            document.getElementById('authorize-button').onclick = handleAuthClick;
+            
+            // **NUEVO**: Comprobar si ya existe una sesión al cargar la página
+            if (gapi.client.getToken() === null) {
+                // No hay sesión, se muestra la pantalla de login
+                document.getElementById('login-overlay').style.display = 'flex';
+            } else {
+                // Sesión encontrada, se intenta cargar los datos directamente
+                handleAuthResponse({ access_token: gapi.client.getToken().access_token });
+            }
+
+            document.getElementById('authorize-button').onclick = () => tokenClient.requestAccessToken({prompt: 'consent'});
             document.getElementById('logout-button').onclick = handleSignoutClick;
         }
 
-        function handleAuthClick() {
-            tokenClient.callback = async (resp) => {
-                if (resp.error !== undefined) {
-                    document.getElementById('auth-error').textContent = `Error: ${resp.error}. Asegúrate de que la URL en el cuadro amarillo está autorizada en Google Cloud.`;
-                    document.getElementById('auth-error').classList.remove('hidden');
-                    throw (resp);
-                }
-                document.getElementById('login-overlay').classList.add('hidden');
-                document.getElementById('logout-button').classList.remove('hidden');
-                document.getElementById('main-content').classList.remove('disabled-ui');
-                await loadSheetData();
-            };
-            if (gapi.client.getToken() === null) {
-                tokenClient.requestAccessToken({prompt: 'consent'});
-            } else {
-                tokenClient.requestAccessToken({prompt: ''});
+        // **MODIFICADO**: Función unificada para manejar la respuesta de autenticación
+        async function handleAuthResponse(resp) {
+            if (resp.error || !resp.access_token) {
+                const errorMessage = resp.error || 'No se pudo obtener el token de acceso.';
+                document.getElementById('auth-error').textContent = `Error: ${errorMessage}. Asegúrate de que la URL en el cuadro amarillo está autorizada en Google Cloud.`;
+                document.getElementById('auth-error').classList.remove('hidden');
+                document.getElementById('login-overlay').style.display = 'flex'; // Asegurarse de que el login es visible si falla
+                return;
             }
+            // Ocultar el login y mostrar la app
+            document.getElementById('login-overlay').style.display = 'none';
+            document.getElementById('logout-button').classList.remove('hidden');
+            document.getElementById('main-content').classList.remove('disabled-ui');
+            await loadSheetData();
         }
+
 
         function handleSignoutClick() {
             const token = gapi.client.getToken();
             if (token !== null) {
                 google.accounts.oauth2.revoke(token.access_token);
                 gapi.client.setToken('');
-                document.getElementById('login-overlay').classList.remove('hidden');
+                document.getElementById('login-overlay').style.display = 'flex';
                 document.getElementById('logout-button').classList.add('hidden');
                 document.getElementById('main-content').classList.add('disabled-ui');
                 allProducts = [];
