@@ -43,7 +43,7 @@
         <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4">
             <h2 class="text-2xl font-bold mb-4">Acceso Requerido</h2>
             <p class="mb-6 text-gray-600">Para gestionar el inventario, necesitas autorizar la aplicación.</p>
-            <button id="authorize-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg transition-colors w-full">
+            <button id="authorize-button" type="button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg transition-colors w-full">
                 Iniciar Sesión con Google
             </button>
              <div class="mt-4 p-3 bg-yellow-100 border border-yellow-300 rounded-md text-sm text-yellow-800">
@@ -133,7 +133,23 @@
 
             <!-- Vista de Historial -->
             <div id="view-historial" class="hidden fade-in">
-                <!-- ... (sin cambios) ... -->
+                <h2 class="text-2xl font-bold mb-4">Historial de Movimientos</h2>
+                <div class="bg-white shadow-md rounded-lg overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Final</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Las filas del historial se insertarán aquí -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </main>
     </div>
@@ -164,16 +180,35 @@
         window.gapiLoaded = gapiLoaded;
 
         async function initializeGapiClient() {
-            document.getElementById('redirect-uri-helper').textContent = window.location.origin;
-            await gapi.client.init({ discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'] });
-            tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: handleAuthResponse });
-            if (gapi.client.getToken() === null) {
-                document.getElementById('login-overlay').style.display = 'flex';
-            } else {
-                handleAuthResponse({ access_token: gapi.client.getToken().access_token });
+            try {
+                document.getElementById('redirect-uri-helper').textContent = window.location.origin;
+                await gapi.client.init({ discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'] });
+                
+                tokenClient = google.accounts.oauth2.initTokenClient({ 
+                    client_id: CLIENT_ID, 
+                    scope: SCOPES, 
+                    callback: handleAuthResponse 
+                });
+
+                if (!tokenClient) {
+                    throw new Error("El cliente de autenticación de Google no se pudo inicializar. Revisa la configuración de CLIENT_ID.");
+                }
+
+                document.getElementById('authorize-button').onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
+                document.getElementById('logout-button').onclick = handleSignoutClick;
+
+                if (gapi.client.getToken() === null) {
+                    document.getElementById('login-overlay').style.display = 'flex';
+                } else {
+                    handleAuthResponse({ access_token: gapi.client.getToken().access_token });
+                }
+
+            } catch (err) {
+                console.error("Error crítico durante la inicialización de Google API:", err);
+                const authError = document.getElementById('auth-error');
+                authError.innerHTML = `<strong>Error de inicialización:</strong> ${err.message}. <br>El inicio de sesión no funcionará. Revisa la consola del navegador (F12) para más detalles.`;
+                authError.classList.remove('hidden');
             }
-            document.getElementById('authorize-button').onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
-            document.getElementById('logout-button').onclick = handleSignoutClick;
         }
 
         async function handleAuthResponse(resp) {
@@ -207,15 +242,26 @@
             showToast('Cargando datos...');
             document.getElementById('loading-indicator').classList.remove('hidden');
             try {
-                const inventoryResponse = await gapi.client.sheets.spreadsheets.values.get({
+                const inventoryPromise = gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: SPREADSHEET_ID, range: `${INVENTORY_SHEET_NAME}!A2:H`,
                 });
+                const historyPromise = gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: SPREADSHEET_ID, range: `${HISTORY_SHEET_NAME}!A2:E`,
+                });
+
+                const [inventoryResponse, historyResponse] = await Promise.all([inventoryPromise, historyPromise]);
+
                 allProducts = (inventoryResponse.result.values || []).map((row, index) => ({
                     rowNum: index + 2, id: row[COLS.id], categoria: row[COLS.categoria], prenda: row[COLS.prenda],
                     manga: row[COLS.manga], talla: row[COLS.talla], centro: row[COLS.centro],
                     stock: parseInt(row[COLS.stock], 10) || 0, imageUrl: row[COLS.imagen_url] || ''
                 }));
+                
+                const historyValues = (historyResponse.result.values || []).reverse();
+                renderHistory(historyValues);
+                
                 resetSelection(); // Inicia el asistente
+                showToast('Datos cargados.', 'success');
             } catch (err) {
                 console.error('Error al cargar los datos:', err);
                 showToast('Error al cargar los datos.', 'error');
@@ -235,7 +281,6 @@
             updateBreadcrumbs();
             document.getElementById('final-product-view').classList.add('hidden');
 
-            // Filtrar productos basados en la selección actual
             let filtered = allProducts;
             if (selection.category) filtered = filtered.filter(p => p.categoria === selection.category);
             if (selection.garment) filtered = filtered.filter(p => p.prenda === selection.garment);
@@ -243,14 +288,12 @@
             if (selection.size) filtered = filtered.filter(p => p.talla === selection.size);
             if (selection.center) filtered = filtered.filter(p => p.centro === selection.center);
 
-            // Poblar opciones para cada paso
             populateStep('category', [...new Set(allProducts.map(p => p.categoria))]);
             populateStep('garment', [...new Set(filtered.map(p => p.prenda))], !selection.category);
             populateStep('sleeve', [...new Set(filtered.map(p => p.manga))], !selection.garment);
             populateStep('size', [...new Set(filtered.map(p => p.talla))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })) , !selection.sleeve);
             populateStep('center', [...new Set(filtered.map(p => p.centro))], !selection.size);
             
-            // Si solo queda un producto, mostrarlo
             if (filtered.length === 1 && selection.center) {
                 renderFinalProduct(filtered[0]);
             }
@@ -276,14 +319,11 @@
         }
 
         function handleStepSelection(stepName, value) {
-            // Si se hace clic en una selección ya hecha, se deselecciona
             if (selection[stepName] === value) {
                 value = null;
             }
-            
             selection[stepName] = value;
             
-            // Reiniciar selecciones posteriores
             const steps = ['category', 'garment', 'sleeve', 'size', 'center'];
             const currentStepIndex = steps.indexOf(stepName);
             for (let i = currentStepIndex + 1; i < steps.length; i++) {
@@ -308,7 +348,7 @@
             container.innerHTML = `
                 <h3 class="text-xl font-bold mb-4">Producto Seleccionado</h3>
                 <div class="bg-white rounded-lg shadow-lg p-6 flex flex-col md:flex-row items-center gap-6">
-                    <img src="${product.imageUrl}" onerror="this.onerror=null;this.src='${placeholderUrl}';" alt="" class="w-32 h-32 object-cover rounded-lg">
+                    <img src="${product.imageUrl}" onerror="this.onerror=null;this.src='${placeholderUrl}';" alt="[Imagen de ${product.prenda}]" class="w-32 h-32 object-cover rounded-lg">
                     <div class="flex-1">
                         <h4 class="font-bold text-2xl">${product.prenda}</h4>
                         <p class="text-gray-600">Talla: ${product.talla} | Manga: ${product.manga} | Centro: ${product.centro}</p>
@@ -366,7 +406,25 @@
             setTimeout(() => toast.classList.add('opacity-0'), 3000);
         }
         
-        function renderHistory(history) { /* ... sin cambios ... */ }
+        function renderHistory(history) {
+            const tbody = document.getElementById('history-table-body');
+            tbody.innerHTML = '';
+            if (!history || history.length === 0) {
+                 tbody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-500">No hay movimientos.</td></tr>`;
+                 return;
+            }
+            history.forEach(row => {
+                const typeClass = row[2] === 'Venta' ? 'text-red-500' : 'text-blue-500';
+                tbody.innerHTML += `
+                    <tr class="fade-in">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${row[0]}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${row[1]}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold ${typeClass}">${row[2]}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${row[3]}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">${row[4]}</td>
+                    </tr>`;
+            });
+        }
 
         // --- MANEJADORES DE EVENTOS ---
         function attachEventListeners() {
@@ -379,7 +437,14 @@
                 if (isNaN(quantity) || quantity <= 0) { showToast('Cantidad no válida.', 'error'); return; }
                 updateStock(target.dataset.id, target.dataset.action, quantity);
             });
-            // ... otros listeners ...
+            document.querySelectorAll('[id^="tab-"]').forEach(tab => tab.addEventListener('click', (e) => {
+                document.querySelectorAll('[id^="tab-"]').forEach(t => t.classList.remove('tab-active'));
+                e.target.classList.add('tab-active');
+                
+                const isInventarioTab = e.target.id === 'tab-inventario';
+                document.getElementById('view-inventario').style.display = isInventarioTab ? 'block' : 'none';
+                document.getElementById('view-historial').style.display = isInventarioTab ? 'none' : 'block';
+            }));
         }
         
         attachEventListeners();
